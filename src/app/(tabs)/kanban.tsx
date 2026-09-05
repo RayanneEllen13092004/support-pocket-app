@@ -38,30 +38,42 @@ export default function KanbanScreen() {
         carregarKanban();
     }, []);
 
-    // Adicionar Nova Tarefa via API
+        // Adicionar Nova Tarefa via API
     const adicionarTarefa = async () => {
         if (!novaTarefa.trim()) return;
 
         setLoading(true);
         try {
             const token = await SecureStore.getItemAsync('userToken');
+            if (!token) {
+                Alert.alert('Erro', 'Usuário não autenticado');
+                setLoading(false);
+                return;
+            }
+
             const response = await fetch(`${urlBase}/api/kanban`, {
                 method: 'POST',
                 headers: {
                     'Accept': 'application/json',
                     'Content-Type': 'application/json',
-                                        'Authorization': `Bearer ${token}`
+                    'Authorization': `Bearer ${token}`
                 },
                 body: JSON.stringify({ title: novaTarefa, status: 'todo' })
             });
+
+            const text = await response.text();
+            console.log('POST /api/kanban', response.status, text);
+            let payload;
+            try { payload = JSON.parse(text); } catch { payload = { message: text } }
 
             if (response.ok) {
                 setNovaTarefa('');
                 carregarKanban(); // Recarrega a lista do banco
             } else {
-                Alert.alert('Erro', 'Não foi possível criar a tarefa.');
+                Alert.alert('Erro', payload.message || JSON.stringify(payload));
             }
         } catch (error) {
+            console.error(error);
             Alert.alert('Erro de Conexão', 'Falha ao comunicar com o servidor.');
         } finally {
             setLoading(false);
@@ -237,4 +249,5 @@ const styles = StyleSheet.create({
     moveButtonDone: { paddingVertical: 4, paddingHorizontal: 8, backgroundColor: '#d1fae5', borderRadius: 6 },
     moveButtonDoneText: { fontSize: 12, color: '#047857', fontWeight: 'bold' }
 });
+
 
