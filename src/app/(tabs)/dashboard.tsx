@@ -6,11 +6,17 @@ import { Ionicons } from '@expo/vector-icons';
 
 export default function DashboardScreen() {
     const router = useRouter();
+    const hour = new Date().getHours();
+    const saudacao = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite';
 
     const fazerLogout = async () => {
         await SecureStore.deleteItemAsync('userToken');
+        await SecureStore.deleteItemAsync('userRole');
         router.replace('/');
     };
+    const irParaSnippets = () => router.push('/snippets');
+    const irParaRegistro = () => router.push('/registro');
+    const irParaKanban = () => router.push('/kanban');
 
     return (
         <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
@@ -18,7 +24,7 @@ export default function DashboardScreen() {
             {/* Header com Gradiente Visual */}
             <View style={styles.header}>
                 <View style={styles.headerTopRow}>
-                    <Text style={styles.greeting}>Bom dia, suporte</Text>
+                <Text style={styles.greeting}>{saudacao}, suporte</Text>
                     <TouchableOpacity onPress={fazerLogout} style={styles.logoutButton}>
                         <Ionicons name="log-out-outline" size={20} color="#ffffff" />
                     </TouchableOpacity>
@@ -71,17 +77,17 @@ export default function DashboardScreen() {
                     <Text style={styles.sectionTitle}>Ações rápidas</Text>
 
                     <View style={styles.actionList}>
-                        <TouchableOpacity style={styles.actionButton} activeOpacity={0.7}>
+                        <TouchableOpacity style={styles.actionButton} activeOpacity={0.7} onPress={irParaSnippets}>
                             <Text style={styles.actionButtonText}>Ver Snippets</Text>
                             <Ionicons name="chevron-forward" size={18} color="#6b7280" />
                         </TouchableOpacity>
 
-                        <TouchableOpacity style={styles.actionButton} activeOpacity={0.7}>
+                        <TouchableOpacity style={styles.actionButton} activeOpacity={0.7} onPress={irParaRegistro}>
                             <Text style={styles.actionButtonText}>Novo Registro</Text>
                             <Ionicons name="chevron-forward" size={18} color="#6b7280" />
                         </TouchableOpacity>
 
-                        <TouchableOpacity style={styles.actionButton} activeOpacity={0.7}>
+                        <TouchableOpacity style={styles.actionButton} activeOpacity={0.7} onPress={irParaKanban}>
                             <Text style={styles.actionButtonText}>Abrir Kanban</Text>
                             <Ionicons name="chevron-forward" size={18} color="#6b7280" />
                         </TouchableOpacity>

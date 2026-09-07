@@ -1,7 +1,6 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Dimensions, Alert, ActivityIndicator } from 'react-native';
-import * as SecureStore from 'expo-secure-store';
-import { Ionicons } from '@expo/vector-icons';
+import { apiFetch } from '@/services/api';
 
 const { width } = Dimensions.get('window');
 const COLUMN_WIDTH = width * 0.85;
@@ -15,22 +14,16 @@ export default function KanbanScreen() {
         done: []
     });
 
-    const urlBase = 'http://192.168.1.102:8000';
     const carregarKanban = async () => {
         try {
-            const token = await SecureStore.getItemAsync('userToken');
-            const response = await fetch(`${urlBase}/api/kanban`, {
-                headers: {
-                    'Accept': 'application/json',
-                                        'Authorization': `Bearer ${token}`
-                }
-            });
-            const data = await response.json();
+            const response = await apiFetch('/api/kanban');
+
             if (response.ok) {
-                setTarefas(data); // Espera que o Laravel retorne { todo: [...], doing: [...], done: [...] }
+                const data = await response.json();
+                setTarefas(data);
             }
         } catch (error) {
-            console.error(error);
+            console.error('Erro ao carregar kanban:', error);
         }
     };
 
@@ -38,39 +31,25 @@ export default function KanbanScreen() {
         carregarKanban();
     }, []);
 
-        // Adicionar Nova Tarefa via API
     const adicionarTarefa = async () => {
         if (!novaTarefa.trim()) return;
 
         setLoading(true);
         try {
-            const token = await SecureStore.getItemAsync('userToken');
-            if (!token) {
-                Alert.alert('Erro', 'Usuário não autenticado');
-                setLoading(false);
-                return;
-            }
-
-            const response = await fetch(`${urlBase}/api/kanban`, {
+            const response = await apiFetch('/api/kanban', {
                 method: 'POST',
                 headers: {
-                    'Accept': 'application/json',
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
                 },
                 body: JSON.stringify({ title: novaTarefa, status: 'todo' })
             });
 
-            const text = await response.text();
-            console.log('POST /api/kanban', response.status, text);
-            let payload;
-            try { payload = JSON.parse(text); } catch { payload = { message: text } }
-
             if (response.ok) {
                 setNovaTarefa('');
-                carregarKanban(); // Recarrega a lista do banco
+                carregarKanban();
             } else {
-                Alert.alert('Erro', payload.message || JSON.stringify(payload));
+                const payload = await response.json().catch(() => ({ message: 'Erro desconhecido' }));
+                Alert.alert('Erro', payload.message || 'Não foi possível adicionar a tarefa.');
             }
         } catch (error) {
             console.error(error);
@@ -82,28 +61,27 @@ export default function KanbanScreen() {
 
     const mudarStatus = async (id, novoStatus) => {
         try {
-            const token = await SecureStore.getItemAsync('userToken');
-            const response = await fetch(`${urlBase}/api/kanban/${id}/status`, {
+            const response = await apiFetch(`/api/kanban/${id}/status`, {
                 method: 'PATCH',
                 headers: {
-                    'Accept': 'application/json',
                     'Content-Type': 'application/json',
-                                        'Authorization': `Bearer ${token}`
                 },
                 body: JSON.stringify({ status: novoStatus })
             });
 
             if (response.ok) {
                 carregarKanban();
+            } else {
+                Alert.alert('Erro', 'Não foi possível atualizar o status da tarefa.');
             }
         } catch (error) {
-            Alert.alert('Erro', 'Não foi possível atualizar o status.');
+            console.error(error);
+            Alert.alert('Erro', 'Falha de conexão ao tentar atualizar o status.');
         }
     };
 
     return (
         <View style={styles.container}>
-
             {/* Header Fixo */}
             <View style={styles.header}>
                 <Text style={styles.headerTitle}>Meu Kanban</Text>
@@ -140,7 +118,6 @@ export default function KanbanScreen() {
                 decelerationRate="fast"
                 contentContainerStyle={styles.scrollContent}
             >
-
                 {/* COLUNA: A FAZER */}
                 <View style={[styles.column, styles.colTodo]}>
                     <View style={styles.columnHeader}>
@@ -216,7 +193,6 @@ export default function KanbanScreen() {
                         ))}
                     </ScrollView>
                 </View>
-
             </ScrollView>
         </View>
     );
@@ -249,5 +225,3 @@ const styles = StyleSheet.create({
     moveButtonDone: { paddingVertical: 4, paddingHorizontal: 8, backgroundColor: '#d1fae5', borderRadius: 6 },
     moveButtonDoneText: { fontSize: 12, color: '#047857', fontWeight: 'bold' }
 });
-
-
