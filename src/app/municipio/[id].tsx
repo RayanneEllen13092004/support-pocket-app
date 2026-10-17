@@ -1,11 +1,12 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-// import { ActivityIndicator, Alert, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+﻿import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
 import * as DocumentPicker from 'expo-document-picker';
-import { apiFetch } from '../../services/api';
-import { ActivityIndicator, Alert, Linking, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import * as FileSystem from 'expo-file-system/legacy';
+import { apiFetch, BASE_URL } from '../../services/api';
+import { ActivityIndicator, Alert, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+
 
 type MunicipalityDocument = {
     id: number;
@@ -81,58 +82,105 @@ export default function MunicipioDetalhesScreen() {
         await Linking.openURL(url);
     };
 
+    const removerDocumento = async (documentId: number) => {
+        Alert.alert(
+            'Excluir documento',
+            'Tem certeza que deseja remover este documento anexado?',
+            [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                    text: 'Excluir',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            const response = await apiFetch(`/api/municipios/${municipalityId}/documentos/${documentId}`, {
+                                method: 'DELETE',
+                            });
+
+                            if (!response.ok) {
+                                const payload = await response.json().catch(() => ({}));
+                                Alert.alert('Erro', payload.message || 'Não foi possível excluir o documento.');
+                                return;
+                            }
+
+                            Alert.alert('Sucesso', 'Documento removido com sucesso.');
+                            await carregarDetalhes();
+                        } catch (error) {
+                            console.error('Erro ao remover documento:', error);
+                            Alert.alert('Erro', 'Falha ao remover o documento.');
+                        }
+                    },
+                },
+            ]
+        );
+    };
+
     const anexarDocumento = async () => {
         try {
+            const token = await SecureStore.getItemAsync('userToken');
+            if (!token) {
+                Alert.alert('Erro', 'Usuário não autenticado.');
+                return;
+            }
+
             const result = await DocumentPicker.getDocumentAsync({
                 type: '*/*',
-                copyToCacheDirectory: true,
+                copyToCacheDirectory: false,
+                multiple: false,
             });
 
-            if (!result.canceled && result.assets && result.assets.length > 0) {
-                const file = result.assets[0];
+            if (result.canceled || !result.assets?.length) return;
 
-                // 1. PASSO PROFISSIONAL: Inspecionar o que o celular nos devolveu
-                console.log("👉 DADOS BRUTOS DO ARQUIVO:", file);
-
-                // Se não vier URI, paramos aqui antes de quebrar o app
-                if (!file.uri) {
-                    Alert.alert('Erro', 'O arquivo selecionado é inválido (sem URI).');
-                    return;
-                }
-
-                setUploading(true);
-
-                const formData = new FormData();
-
-                // 2. Montagem ESTRITA do objeto (apenas as 3 chaves exigidas pelo React Native)
-                const uriLimpa = Platform.OS === 'android' ? file.uri : file.uri.replace('file://', '');
-
-                formData.append('arquivo', {
-                    uri: uriLimpa,
-                    name: file.name || 'documento.pdf',
-                    type: file.mimeType || 'application/pdf',
-                } as any);
-
-                // 3. PASSO PROFISSIONAL 2: Garantir que o apiFetch não force 'application/json'
-                const response = await apiFetch(`/api/municipios/${municipalityId}/documentos`, {
-                    method: 'POST',
-                    body: formData,
-                    headers: {
-                        'Accept': 'application/json',
-                        // Remover ou anular o Content-Type para forçar o fetch a calcular o boundary do multipart
-                        'Content-Type': 'multipart/form-data',
-                    }
-                });
-
-                if (!response.ok) {
-                    const errorMessage = await response.text();
-                    console.error("Erro retornado pela API:", errorMessage);
-                    throw new Error('Falha ao salvar no servidor');
-                }
-
-                Alert.alert('Sucesso!', 'O arquivo foi enviado com sucesso.');
-                carregarDetalhes();
+            const file = result.assets[0];
+            if (!file.uri) {
+                Alert.alert('Erro', 'O arquivo selecionado é inválido (sem URI).');
+                return;
             }
+
+            const uploadDir = `${FileSystem.documentDirectory}uploads/`;
+            await FileSystem.makeDirectoryAsync(uploadDir, { intermediates: true });
+
+            const originalName = file.name ?? `document-${Date.now()}`;
+            const extension = originalName.includes('.') ? originalName.split('.').pop() ?? 'bin' : 'bin';
+            const copiedName = `municipio-${municipalityId}-${Date.now()}.${extension}`;
+            const localFileUri = `${uploadDir}${copiedName}`;
+
+            await FileSystem.copyAsync({
+                from: file.uri,
+                to: localFileUri,
+            });
+
+            setUploading(true);
+
+            const uploadResult = await FileSystem.uploadAsync(
+                `${BASE_URL}/api/municipios/${municipalityId}/documentos`,
+                localFileUri,
+                {
+                    httpMethod: 'POST',
+                    uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+                    fieldName: 'document',
+                    mimeType: file.mimeType ?? 'application/octet-stream',
+                    headers: {
+                        Accept: 'application/json',
+                        Authorization: `Bearer ${token}`,
+                    },
+                }
+            );
+
+            let payload: any;
+            try {
+                payload = JSON.parse(uploadResult.body);
+            } catch {
+                payload = { message: uploadResult.body };
+            }
+
+            if (uploadResult.status < 200 || uploadResult.status >= 300) {
+                Alert.alert('Erro', payload.message || 'Falha ao enviar o documento.');
+                return;
+            }
+
+            Alert.alert('Sucesso!', payload.message || 'O arquivo foi enviado com sucesso.');
+            await carregarDetalhes();
         } catch (error) {
             console.error('Erro no upload:', error);
             Alert.alert('Erro', 'Falha ao enviar o documento.');
@@ -249,20 +297,31 @@ export default function MunicipioDetalhesScreen() {
                             <Text style={styles.emptyText}>Nenhum documento anexado.</Text>
                         ) : (
                             municipality.documents.map((document) => (
-                                <TouchableOpacity
-                                    key={document.id}
-                                    style={styles.documentRow}
-                                    onPress={() => baixarDocumento(document.download_url)}
-                                    activeOpacity={0.8}
-                                >
-                                    <View style={styles.documentInfo}>
-                                        <Ionicons name="document-text-outline" size={18} color="#2563eb" />
-                                        <Text style={styles.documentName} numberOfLines={1}>
-                                            {document.name}
-                                        </Text>
-                                    </View>
-                                    <Ionicons name="download-outline" size={18} color="#475569" />
-                                </TouchableOpacity>
+                                <View key={document.id} style={styles.documentRow}>
+                                    <TouchableOpacity
+                                        style={styles.documentMainAction}
+                                        onPress={() => baixarDocumento(document.download_url)}
+                                        activeOpacity={0.8}
+                                    >
+                                        <View style={styles.documentInfo}>
+                                            <Ionicons name="document-text-outline" size={18} color="#2563eb" />
+                                            <Text style={styles.documentName} numberOfLines={1}>
+                                                {document.name}
+                                            </Text>
+                                        </View>
+                                        <Ionicons name="download-outline" size={18} color="#475569" />
+                                    </TouchableOpacity>
+
+                                    {isSupervisor && (
+                                        <TouchableOpacity
+                                            style={styles.deleteButton}
+                                            onPress={() => removerDocumento(document.id)}
+                                            activeOpacity={0.8}
+                                        >
+                                            <Ionicons name="trash-outline" size={18} color="#dc2626" />
+                                        </TouchableOpacity>
+                                    )}
+                                </View>
                             ))
                         )}
                     </View>
@@ -325,8 +384,23 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
+        gap: 8,
+    },
+    documentMainAction: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        flex: 1,
     },
     documentInfo: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, marginRight: 8 },
     documentName: { color: '#1e293b', fontSize: 13, flex: 1 },
+    deleteButton: {
+        width: 32,
+        height: 32,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderRadius: 8,
+        backgroundColor: '#fee2e2',
+    },
     emptyText: { color: '#64748b', fontSize: 14 }
 });

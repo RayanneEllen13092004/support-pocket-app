@@ -1,22 +1,80 @@
-import React from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
-import { useRouter } from 'expo-router';
+import React, { useEffect, useState } from 'react';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import { useIsFocused, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import { Ionicons } from '@expo/vector-icons';
+import * as FileSystem from 'expo-file-system/legacy';
 
 export default function DashboardScreen() {
     const router = useRouter();
+    const isFocused = useIsFocused();
+    const [avatarUri, setAvatarUri] = useState<string | null>(null);
     const hour = new Date().getHours();
     const saudacao = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite';
+
+    const getAvatarStorageKey = async () => {
+        const normalizeStorageSuffix = (value: string) =>
+            value.trim().toLowerCase().replace(/[^a-z0-9._-]/g, '_');
+
+        const userId = await SecureStore.getItemAsync('userId');
+        if (userId) return `userAvatar_${normalizeStorageSuffix(userId)}`;
+
+        const userEmail = await SecureStore.getItemAsync('userEmail');
+        if (userEmail) return `userAvatar_${normalizeStorageSuffix(userEmail)}`;
+
+        const userName = await SecureStore.getItemAsync('userName');
+        if (userName) return `userAvatar_${normalizeStorageSuffix(userName)}`;
+
+        return null;
+    };
+
+    useEffect(() => {
+        let active = true;
+
+        const carregarAvatar = async () => {
+            const avatarKey = await getAvatarStorageKey();
+            if (!avatarKey) {
+                if (active) setAvatarUri(null);
+                return;
+            }
+
+            const fotoSalva = await SecureStore.getItemAsync(avatarKey);
+            if (!fotoSalva) {
+                if (active) setAvatarUri(null);
+                return;
+            }
+
+            const info = await FileSystem.getInfoAsync(fotoSalva);
+            if (info.exists) {
+                if (active) setAvatarUri(fotoSalva);
+            } else {
+                if (active) setAvatarUri(null);
+                await SecureStore.deleteItemAsync(avatarKey);
+            }
+        };
+
+        if (isFocused) {
+            carregarAvatar();
+        }
+
+        return () => {
+            active = false;
+        };
+    }, [isFocused]);
 
     const fazerLogout = async () => {
         await SecureStore.deleteItemAsync('userToken');
         await SecureStore.deleteItemAsync('userRole');
+        await SecureStore.deleteItemAsync('userName');
+        await SecureStore.deleteItemAsync('userId');
+        await SecureStore.deleteItemAsync('userEmail');
+        setAvatarUri(null);
         router.replace('/');
     };
     const irParaSnippets = () => router.push('/snippets');
     const irParaRegistro = () => router.push('/registro');
     const irParaKanban = () => router.push('/kanban');
+    const irParaPerfil = () => router.push('/perfil');
 
     return (
         <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
@@ -24,10 +82,26 @@ export default function DashboardScreen() {
             {/* Header com Gradiente Visual */}
             <View style={styles.header}>
                 <View style={styles.headerTopRow}>
-                <Text style={styles.greeting}>{saudacao}, suporte</Text>
-                    <TouchableOpacity onPress={fazerLogout} style={styles.logoutButton}>
-                        <Ionicons name="log-out-outline" size={20} color="#ffffff" />
-                    </TouchableOpacity>
+                    <Text style={styles.greeting}>{saudacao}, suporte</Text>
+
+                    {/* Contêiner para agrupar os ícones à direita */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 15 }}>
+
+                        {/* Botão de Perfil */}
+                        <TouchableOpacity onPress={irParaPerfil} activeOpacity={0.7} style={styles.profileButton}>
+                            {avatarUri ? (
+                                <Image source={{ uri: avatarUri }} style={styles.profileAvatar} />
+                            ) : (
+                                <Ionicons name="person-circle-outline" size={24} color="#ffffff" />
+                            )}
+                        </TouchableOpacity>
+
+                        {/* Botão de Logout*/}
+                        <TouchableOpacity onPress={fazerLogout} style={styles.logoutButton} activeOpacity={0.7}>
+                            <Ionicons name="log-out-outline" size={24} color="#ffffff" />
+                        </TouchableOpacity>
+
+                    </View>
                 </View>
                 <Text style={styles.title}>Support Pocket</Text>
                 <Text style={styles.subtitle}>Visão rápida do atendimento escolar</Text>
@@ -141,6 +215,15 @@ const styles = StyleSheet.create({
     header: { backgroundColor: '#2563eb', paddingTop: 60, paddingHorizontal: 20, paddingBottom: 24, borderBottomLeftRadius: 28, borderBottomRightRadius: 28 },
     headerTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     greeting: { fontSize: 14, color: '#dbeafe' },
+    profileButton: { alignItems: 'center', justifyContent: 'center' },
+    profileAvatar: {
+        width: 30,
+        height: 30,
+        borderRadius: 15,
+        borderWidth: 1.5,
+        borderColor: 'rgba(255,255,255,0.85)',
+        backgroundColor: '#93c5fd'
+    },
     logoutButton: { padding: 6, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 8 },
     title: { fontSize: 28, fontWeight: 'bold', color: '#ffffff', marginTop: 4 },
     subtitle: { fontSize: 14, color: '#dbeafe', marginTop: 2 },

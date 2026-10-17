@@ -21,8 +21,6 @@ export default function LoginScreen() {
     setLoading(true);
 
     try {
-      // 1. Rota corrigida para /api/login
-      // 2. Método POST enviando email e senha
       const response = await fetch(`${BASE_URL}/api/login`, {
         method: 'POST',
         headers: {
@@ -39,9 +37,20 @@ export default function LoginScreen() {
 
       if (response.ok) {
         await SecureStore.setItemAsync('userToken', data.token);
+        await SecureStore.setItemAsync('userEmail', email.trim().toLowerCase());
+
         if (data.user?.role) {
           await SecureStore.setItemAsync('userRole', data.user.role);
         }
+
+        if (data.user?.name) {
+          await SecureStore.setItemAsync('userName', data.user.name);
+        }
+
+        if (data.user?.id !== undefined && data.user?.id !== null) {
+          await SecureStore.setItemAsync('userId', String(data.user.id));
+        }
+
         router.replace('/(tabs)/dashboard');
       } else {
         Alert.alert('Erro', data.message || 'Credenciais inválidas.');

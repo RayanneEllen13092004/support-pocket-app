@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 
 type Snippet = {
@@ -80,8 +80,41 @@ export default function SnippetsScreen() {
         setShowForm(true);
     };
 
-    return (
-        <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+    const renderSnippet = ({ item: snippet }: { item: Snippet }) => (
+        <View style={styles.card}>
+            <View style={styles.cardTop}>
+                <View style={styles.cardInfo}>
+                    <Text style={styles.title}>{snippet.title}</Text>
+                    <Text style={styles.category}>{snippet.category}</Text>
+                </View>
+
+                <View style={styles.cardActions}>
+                    <TouchableOpacity
+                        style={styles.iconButton}
+                        onPress={() => abrirEdicao(snippet)}
+                        activeOpacity={0.8}
+                    >
+                        <Text style={styles.iconButtonText}>✎</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                        style={styles.copyButton}
+                        onPress={() => copiarSnippet(snippet)}
+                        activeOpacity={0.8}
+                    >
+                        <Text style={styles.copyButtonText}>
+                            {copiedId === snippet.id ? 'Copiado!' : 'Copiar'}
+                        </Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+
+            <Text style={styles.body}>{snippet.body}</Text>
+        </View>
+    );
+
+    const renderCabecalho = () => (
+        <View>
             <View style={styles.header}>
                 <View style={styles.headerTopRow}>
                     <View>
@@ -101,7 +134,7 @@ export default function SnippetsScreen() {
 
             {showForm && (
                 <View style={styles.formCard}>
-                <Text style={styles.formTitle}>{editingId ? 'Editar snippet' : 'Novo snippet'}</Text>
+                    <Text style={styles.formTitle}>{editingId ? 'Editar snippet' : 'Novo snippet'}</Text>
                     <TextInput
                         style={styles.input}
                         placeholder="Título"
@@ -149,42 +182,19 @@ export default function SnippetsScreen() {
                     </View>
                 </View>
             )}
+        </View>
+    );
 
-            <View style={styles.list}>
-                {snippets.map((snippet) => (
-                    <View key={snippet.id} style={styles.card}>
-                        <View style={styles.cardTop}>
-                            <View style={styles.cardInfo}>
-                                <Text style={styles.title}>{snippet.title}</Text>
-                                <Text style={styles.category}>{snippet.category}</Text>
-                            </View>
-
-                            <View style={styles.cardActions}>
-                                <TouchableOpacity
-                                    style={styles.iconButton}
-                                    onPress={() => abrirEdicao(snippet)}
-                                    activeOpacity={0.8}
-                                >
-                                    <Text style={styles.iconButtonText}>✎</Text>
-                                </TouchableOpacity>
-
-                                <TouchableOpacity
-                                    style={styles.copyButton}
-                                    onPress={() => copiarSnippet(snippet)}
-                                    activeOpacity={0.8}
-                                >
-                                    <Text style={styles.copyButtonText}>
-                                        {copiedId === snippet.id ? 'Copiado!' : 'Copiar'}
-                                    </Text>
-                                </TouchableOpacity>
-                            </View>
-                        </View>
-
-                        <Text style={styles.body}>{snippet.body}</Text>
-                    </View>
-                ))}
-            </View>
-        </ScrollView>
+    return (
+        <FlatList
+            style={styles.container}
+            contentContainerStyle={styles.contentContainer}
+            data={snippets}
+            keyExtractor={(item) => item.id.toString()}
+            renderItem={renderSnippet}
+            ListHeaderComponent={renderCabecalho()}
+            showsVerticalScrollIndicator={false}
+        />
     );
 }
 
@@ -197,7 +207,8 @@ const styles = StyleSheet.create({
         paddingHorizontal: 24,
         paddingBottom: 24,
         borderBottomLeftRadius: 24,
-        borderBottomRightRadius: 24
+        borderBottomRightRadius: 24,
+        marginBottom: 16
     },
     headerTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
     headerSubtitle: { fontSize: 14, color: '#dbeafe' },
@@ -212,8 +223,8 @@ const styles = StyleSheet.create({
     },
     addButtonText: { color: '#ffffff', fontSize: 24, fontWeight: 'bold', lineHeight: 24 },
     formCard: {
-        margin: 16,
-        marginTop: 0,
+        marginHorizontal: 16,
+        marginBottom: 16,
         backgroundColor: '#ffffff',
         borderRadius: 16,
         padding: 14,
@@ -242,13 +253,14 @@ const styles = StyleSheet.create({
     formButtonText: { color: '#ffffff', fontWeight: 'bold' },
     formButtonSecondary: { backgroundColor: '#e2e8f0' },
     formButtonSecondaryText: { color: '#334155', fontWeight: 'bold' },
-    list: { padding: 16, gap: 12 },
     card: {
         backgroundColor: '#f3f4f6',
         borderRadius: 16,
         padding: 14,
         borderWidth: 1,
-        borderColor: '#e5e7eb'
+        borderColor: '#e5e7eb',
+        marginHorizontal: 16,
+        marginBottom: 12,
     },
     cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
     cardInfo: { flex: 1 },
