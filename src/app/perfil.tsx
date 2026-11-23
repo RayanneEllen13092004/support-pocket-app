@@ -8,7 +8,6 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as SecureStore from 'expo-secure-store';
 import { BASE_URL } from '@/services/api';
 
-
 export default function PerfilScreen() {
     const router = useRouter();
 
@@ -17,7 +16,10 @@ export default function PerfilScreen() {
     const [cargo, setCargo] = useState('');
     const [senhaAtual, setSenhaAtual] = useState('');
     const [novaSenha, setNovaSenha] = useState('');
+    const [mostrarSenhaAtual, setMostrarSenhaAtual] = useState(false);
+    const [mostrarNovaSenha, setMostrarNovaSenha] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [deleting, setDeleting] = useState(false);
 
     const getAvatarStorageKey = useCallback(async () => {
         const normalizeStorageSuffix = (value: string) =>
@@ -100,7 +102,6 @@ export default function PerfilScreen() {
     };
 
     const escolherDaGaleria = async () => {
-        // Pede permissão para acessar as fotos do aparelho
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
         if (status !== 'granted') {
@@ -108,7 +109,6 @@ export default function PerfilScreen() {
             return;
         }
 
-        // Abre a galeria nativa
         const result = await ImagePicker.launchImageLibraryAsync({
             mediaTypes: ['images'],
             allowsEditing: true,
@@ -148,7 +148,6 @@ export default function PerfilScreen() {
         try {
             const token = await SecureStore.getItemAsync('userToken');
 
-            // Faz a requisição PUT para a nova rota do Laravel
             const response = await fetch(`${BASE_URL}/api/perfil/senha`, {
                 method: 'PUT',
                 headers: {
@@ -166,8 +165,8 @@ export default function PerfilScreen() {
 
             if (response.ok) {
                 Alert.alert("Sucesso", "Sua senha foi atualizada!");
-                setSenhaAtual(''); // Limpa o campo
-                setNovaSenha('');  // Limpa o campo
+                setSenhaAtual('');
+                setNovaSenha('');
             } else {
                 Alert.alert("Erro", data.message || "Não foi possível atualizar a senha.");
             }
@@ -176,6 +175,55 @@ export default function PerfilScreen() {
             Alert.alert("Erro de Conexão", "Não foi possível conectar ao servidor.");
         } finally {
             setLoading(false);
+        }
+    };
+
+    const confirmarExclusaoConta = () => {
+        Alert.alert(
+            "Excluir Conta",
+            "Tem certeza que deseja excluir sua conta permanentemente? Todos os seus dados de acesso serão apagados e esta ação não poderá ser desfeita.",
+            [
+                { text: "Cancelar", style: "cancel" },
+                {
+                    text: "Excluir Permanentemente",
+                    style: "destructive",
+                    onPress: handleExcluirConta,
+                },
+            ]
+        );
+    };
+
+    const handleExcluirConta = async () => {
+        setDeleting(true);
+        try {
+            const token = await SecureStore.getItemAsync('userToken');
+
+            const response = await fetch(`${BASE_URL}/api/perfil/excluir-conta`, {
+                method: 'DELETE',
+                headers: {
+                    'Accept': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                },
+            });
+
+            if (response.ok) {
+                await SecureStore.deleteItemAsync('userToken');
+                await SecureStore.deleteItemAsync('userId');
+                await SecureStore.deleteItemAsync('userEmail');
+                await SecureStore.deleteItemAsync('userName');
+                await SecureStore.deleteItemAsync('userRole');
+
+                Alert.alert("Conta Excluída", "Sua conta foi removida permanentemente.");
+                router.replace('/');
+            } else {
+                const data = await response.json().catch(() => ({}));
+                Alert.alert("Erro", data.message || "Não foi possível excluir a conta.");
+            }
+        } catch (error) {
+            console.error("Erro ao excluir conta:", error);
+            Alert.alert("Erro de Conexão", "Não foi possível conectar ao servidor.");
+        } finally {
+            setDeleting(false);
         }
     };
 
@@ -228,10 +276,20 @@ export default function PerfilScreen() {
                         <TextInput
                             style={styles.input}
                             placeholder="Digite sua senha atual"
-                            secureTextEntry
+                            secureTextEntry={!mostrarSenhaAtual}
                             value={senhaAtual}
                             onChangeText={setSenhaAtual}
                         />
+                        <TouchableOpacity
+                            onPress={() => setMostrarSenhaAtual(!mostrarSenhaAtual)}
+                            style={styles.eyeButton}
+                        >
+                            <Ionicons
+                                name={mostrarSenhaAtual ? "eye-off-outline" : "eye-outline"}
+                                size={20}
+                                color="#6b7280"
+                            />
+                        </TouchableOpacity>
                     </View>
 
                     <Text style={styles.label}>Nova Senha</Text>
@@ -240,23 +298,50 @@ export default function PerfilScreen() {
                         <TextInput
                             style={styles.input}
                             placeholder="Digite a nova senha"
-                            secureTextEntry
+                            secureTextEntry={!mostrarNovaSenha}
                             value={novaSenha}
                             onChangeText={setNovaSenha}
                         />
+                        <TouchableOpacity
+                            onPress={() => setMostrarNovaSenha(!mostrarNovaSenha)}
+                            style={styles.eyeButton}
+                        >
+                            <Ionicons
+                                name={mostrarNovaSenha ? "eye-off-outline" : "eye-outline"}
+                                size={20}
+                                color="#6b7280"
+                            />
+                        </TouchableOpacity>
                     </View>
+
+                    <TouchableOpacity
+                        style={[styles.saveButton, loading && styles.saveButtonDisabled]}
+                        onPress={handleSalvar}
+                        disabled={loading}
+                    >
+                        <Text style={styles.saveButtonText}>
+                            {loading ? 'Salvando...' : 'Salvar Nova Senha'}
+                        </Text>
+                    </TouchableOpacity>
                 </View>
 
-                <TouchableOpacity
-                    style={[styles.saveButton, loading && styles.saveButtonDisabled]}
-                    onPress={handleSalvar}
-                    disabled={loading}
-                >
-                    <Text style={styles.saveButtonText}>
-                        {loading ? 'Salvando...' : 'Salvar Alterações'}
+                <View style={styles.dangerSection}>
+                    <Text style={styles.dangerTitle}>Privacidade e Conta</Text>
+                    <Text style={styles.dangerDescription}>
+                        Seus dados ficam armazenados de forma segura em servidor PostgreSQL. Caso deseje encerrar seu acesso, a exclusão é imediata e irreversível.
                     </Text>
-                </TouchableOpacity>
 
+                    <TouchableOpacity
+                        style={[styles.deleteButton, deleting && styles.deleteButtonDisabled]}
+                        onPress={confirmarExclusaoConta}
+                        disabled={deleting}
+                    >
+                        <Ionicons name="trash-outline" size={18} color="#ef4444" />
+                        <Text style={styles.deleteButtonText}>
+                            {deleting ? 'Excluindo conta...' : 'Excluir minha conta'}
+                        </Text>
+                    </TouchableOpacity>
+                </View>
             </ScrollView>
         </SafeAreaView>
     );
@@ -279,6 +364,9 @@ const styles = StyleSheet.create({
     },
     backButton: {
         padding: 5,
+        minWidth: 44,
+        minHeight: 44,
+        justifyContent: 'center',
     },
     headerTitle: {
         fontSize: 18,
@@ -287,6 +375,7 @@ const styles = StyleSheet.create({
     },
     scrollContent: {
         padding: 20,
+        paddingBottom: 40,
     },
     avatarSection: {
         alignItems: 'center',
@@ -333,9 +422,10 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         gap: 6,
         backgroundColor: '#e5e7eb',
-        paddingHorizontal: 12,
-        paddingVertical: 7,
+        paddingHorizontal: 14,
+        paddingVertical: 10,
         borderRadius: 16,
+        minHeight: 44,
     },
     avatarActionText: {
         color: '#1f2937',
@@ -394,13 +484,20 @@ const styles = StyleSheet.create({
         height: 48,
         color: '#1f2937',
     },
+    eyeButton: {
+        padding: 10,
+        minWidth: 44,
+        minHeight: 44,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
     saveButton: {
         backgroundColor: '#2563eb',
         borderRadius: 8,
         height: 50,
         justifyContent: 'center',
         alignItems: 'center',
-        marginTop: 10,
+        marginTop: 5,
     },
     saveButtonDisabled: {
         backgroundColor: '#93c5fd',
@@ -408,6 +505,49 @@ const styles = StyleSheet.create({
     saveButtonText: {
         color: '#ffffff',
         fontSize: 16,
+        fontWeight: 'bold',
+    },
+    dangerSection: {
+        backgroundColor: '#ffffff',
+        borderRadius: 12,
+        padding: 20,
+        borderWidth: 1,
+        borderColor: '#fecaca',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 2,
+        elevation: 2,
+    },
+    dangerTitle: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: '#b91c1c',
+        marginBottom: 6,
+    },
+    dangerDescription: {
+        fontSize: 13,
+        color: '#6b7280',
+        lineHeight: 19,
+        marginBottom: 16,
+    },
+    deleteButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        backgroundColor: '#fef2f2',
+        borderWidth: 1,
+        borderColor: '#fecaca',
+        borderRadius: 8,
+        height: 48,
+    },
+    deleteButtonDisabled: {
+        opacity: 0.6,
+    },
+    deleteButtonText: {
+        color: '#ef4444',
+        fontSize: 15,
         fontWeight: 'bold',
     },
 });
